@@ -1,4 +1,4 @@
-/** @license Hyphenator 5.0.0(devel) - client side hyphenation for webbrowsers
+/** @license Hyphenator 5.0.0(split-array) - client side hyphenation for webbrowsers
  *  Copyright (C) 2015  Mathias Nater, Zürich (mathiasnater at gmail dot com)
  *  https://github.com/mnater/Hyphenator
  * 
@@ -19,7 +19,7 @@
  * @global
  * @namespace Hyphenator
  * @author Mathias Nater, <mathias@mnn.ch>
- * @version 5.0.0(devel)
+ * @version 5.0.0(split-array)
  * @example
  * &lt;script src = "Hyphenator.js" type = "text/javascript"&gt;&lt;/script&gt;
  * &lt;script type = "text/javascript"&gt;
@@ -1740,7 +1740,8 @@ var Hyphenator = (function (window) {
                 i,
                 charMapc2i,
                 valueStore,
-                indexedTrie,
+                indexedTrieValueLinks,
+                indexedTrieInnerLinks,
                 trieRowLength,
 
                 extract = function (patternSizeInt, patterns) {
@@ -1767,13 +1768,13 @@ var Hyphenator = (function (window) {
                                 if (nextRowStart === -1) {
                                     nextRowStart = trieNextEmptyRow + trieRowLength;
                                     trieNextEmptyRow = nextRowStart;
-                                    indexedTrie[rowStart + mappedCharCode * 2] = nextRowStart;
+                                    indexedTrieInnerLinks[rowStart + mappedCharCode] = nextRowStart;
                                 }
                                 mappedCharCode = charMapc2i[charCode];
                                 rowStart = nextRowStart;
-                                nextRowStart = indexedTrie[rowStart + mappedCharCode * 2];
+                                nextRowStart = indexedTrieInnerLinks[rowStart + mappedCharCode];
                                 if (nextRowStart === 0) {
-                                    indexedTrie[rowStart + mappedCharCode * 2] = -1;
+                                    indexedTrieInnerLinks[rowStart + mappedCharCode] = -1;
                                     nextRowStart = -1;
                                 }
                             }
@@ -1782,7 +1783,7 @@ var Hyphenator = (function (window) {
                             if (charCode <= 57 && charCode >= 49) {
                                 //the last charCode is a digit
                                 valueStore.add(charCode - 48);
-                                indexedTrie[rowStart + mappedCharCode * 2 + 1] = valueStore.finalize();
+                                indexedTrieValueLinks[rowStart + mappedCharCode] = valueStore.finalize();
                             } else {
                                 //the last charCode is alphabetical
                                 if (!prevWasDigit) {
@@ -1792,14 +1793,14 @@ var Hyphenator = (function (window) {
                                 if (nextRowStart === -1) {
                                     nextRowStart = trieNextEmptyRow + trieRowLength;
                                     trieNextEmptyRow = nextRowStart;
-                                    indexedTrie[rowStart + mappedCharCode * 2] = nextRowStart;
+                                    indexedTrieInnerLinks[rowStart + mappedCharCode] = nextRowStart;
                                 }
                                 mappedCharCode = charMapc2i[charCode];
                                 rowStart = nextRowStart;
-                                if (indexedTrie[rowStart + mappedCharCode * 2] === 0) {
-                                    indexedTrie[rowStart + mappedCharCode * 2] = -1;
+                                if (indexedTrieInnerLinks[rowStart + mappedCharCode] === 0) {
+                                    indexedTrieInnerLinks[rowStart + mappedCharCode] = -1;
                                 }
-                                indexedTrie[rowStart + mappedCharCode * 2 + 1] = valueStore.finalize();
+                                indexedTrieValueLinks[rowStart + mappedCharCode] = valueStore.finalize();
                             }
                             rowStart = 0;
                             nextRowStart = 0;
@@ -1807,11 +1808,23 @@ var Hyphenator = (function (window) {
                         }
                     }
                 };/*,
-                prettyPrintIndexedTrie = function (rowLength) {
+                prettyPrintIndexedTrieInnerLinks = function (rowLength) {
                     var s = "0: ",
                         idx;
-                    for (idx = 0; idx < indexedTrie.length; idx += 1) {
-                        s += indexedTrie[idx];
+                    for (idx = 0; idx < indexedTrieInnerLinks.length; idx += 1) {
+                        s += indexedTrieInnerLinks[idx];
+                        s += ",";
+                        if ((idx + 1) % rowLength === 0) {
+                            s += "\n" + (idx + 1) + ": ";
+                        }
+                    }
+                    console.log(s);
+                },
+                prettyPrintIndexedTrieValueLinks = function (rowLength) {
+                    var s = "0: ",
+                        idx;
+                    for (idx = 0; idx < indexedTrieValueLinks.length; idx += 1) {
+                        s += indexedTrieValueLinks[idx];
                         s += ",";
                         if ((idx + 1) % rowLength === 0) {
                             s += "\n" + (idx + 1) + ": ";
@@ -1829,23 +1842,31 @@ var Hyphenator = (function (window) {
             lo.valueStore = valueStore = new ValueStore(lo.valueStoreLength);
 
             if (Object.prototype.hasOwnProperty.call(window, "Int32Array")) { //IE<9 doesn't have window.hasOwnProperty (host object)
-                lo.indexedTrie = new window.Int32Array(lo.patternArrayLength * 2);
+                lo.indexedTrieValueLinks = new window.Int32Array(lo.patternArrayLength);
+                lo.indexedTrieInnerLinks = new window.Int32Array(lo.patternArrayLength);
             } else {
-                lo.indexedTrie = [];
-                lo.indexedTrie.length = lo.patternArrayLength * 2;
+                lo.indexedTrieValueLinks = [];
+                lo.indexedTrieInnerLinks = [];
+                lo.indexedTrieValueLinks.length = lo.patternArrayLength;
+                lo.indexedTrieInnerLinks.length = lo.patternArrayLength;
                 for (i = lo.indexedTrie.length - 1; i >= 0; i -= 1) {
-                    lo.indexedTrie[i] = 0;
+                    indexedTrieValueLinks[i] = 0;
+                    indexedTrieInnerLinks[i] = 0;
                 }
             }
-            indexedTrie = lo.indexedTrie;
-            trieRowLength = lo.charMap.int2code.length * 2;
+            indexedTrieValueLinks = lo.indexedTrieValueLinks;
+            indexedTrieInnerLinks = lo.indexedTrieInnerLinks;
+            trieRowLength = lo.charMap.int2code.length;
 
             for (i in lo.patterns) {
                 if (lo.patterns.hasOwnProperty(i)) {
                     extract(parseInt(i, 10), lo.patterns[i]);
                 }
             }
-            //prettyPrintIndexedTrie(lo.charMap.int2code.length * 2);
+            //console.log("indexedTrieValueLinks", indexedTrieValueLinks);
+            //console.log("indexedTrieInnerLinks", indexedTrieInnerLinks);
+            //prettyPrintIndexedTrieInnerLinks(lo.charMap.int2code.length);
+            //prettyPrintIndexedTrieValueLinks(lo.charMap.int2code.length);
         },
 
         /**
@@ -2030,7 +2051,8 @@ var Hyphenator = (function (window) {
                         charMap: {code2int: lo.charMap.code2int},
                         charSubstitution: lo.charSubstitution,
                         exceptions: lo.exceptions,
-                        indexedTrie: Array.prototype.slice.call(lo.indexedTrie),
+                        indexedTrieInnerLinks: Array.prototype.slice.call(lo.indexedTrieInnerLinks),
+                        indexedTrieValueLinks: Array.prototype.slice.call(lo.indexedTrieValueLinks),
                         leftmin: lo.leftmin,
                         prepared: lo.prepared,
                         rightmin: lo.rightmin,
@@ -2086,7 +2108,8 @@ var Hyphenator = (function (window) {
                     if (!!storage && storage.test(lang)) {
                         Hyphenator.languages[lang] = window.JSON.parse(storage.getItem(lang));
                         if (Object.prototype.hasOwnProperty.call(window, "Int32Array")) {
-                            Hyphenator.languages[lang].indexedTrie = new window.Int32Array(Hyphenator.languages[lang].indexedTrie);
+                            Hyphenator.languages[lang].indexedTrieInnerLinks = new window.Int32Array(Hyphenator.languages[lang].indexedTrieInnerLinks);
+                            Hyphenator.languages[lang].indexedTrieValueLinks = new window.Int32Array(Hyphenator.languages[lang].indexedTrieValueLinks);
                             Hyphenator.languages[lang].valueStore.keys = new window.Uint8Array(Hyphenator.languages[lang].valueStore.keys);
                         }
                         //console.log(Hyphenator.languages[lang]);
@@ -2257,7 +2280,8 @@ var Hyphenator = (function (window) {
                 link = 0,
                 value = 0,
                 values,
-                indexedTrie = lo.indexedTrie,
+                indexedTrieInnerLinks = lo.indexedTrieInnerLinks,
+                indexedTrieValueLinks = lo.indexedTrieValueLinks,
                 valueStore = lo.valueStore.keys,
                 wwAsMappedCharCode = wwAsMappedCharCodeStore;
 
@@ -2313,8 +2337,8 @@ var Hyphenator = (function (window) {
                         if (enableReducedPatternSet) {
                             pattern += ww.charAt(plen);
                         }
-                        link = indexedTrie[row + mappedCharCode * 2];
-                        value = indexedTrie[row + mappedCharCode * 2 + 1];
+                        link = indexedTrieInnerLinks[row + mappedCharCode];
+                        value = indexedTrieValueLinks[row + mappedCharCode];
                         if (value > 0) {
                             hp = valueStore[value];
                             while (hp) {
@@ -2771,6 +2795,7 @@ var Hyphenator = (function (window) {
                             //return p1.length / -2 + ",";
                             return ~(p1.length >> 1) + 1 + ",";
                         });
+                        console.log(value);
                         try {
                             this.store.setItem(this.prefix + name, value);
                         } catch (e) {
@@ -2851,7 +2876,7 @@ var Hyphenator = (function (window) {
          * minor release: new languages, improvements
          * @access public
          */
-        version: '5.0.0(devel)',
+        version: '5.0.0(split-array)',
 
         /**
          * @member {boolean} Hyphenator.doHyphenation
